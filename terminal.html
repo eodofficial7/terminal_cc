@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2055 荒漠終焉_終端機 v5.2 (Stable)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Firebase SDK (Mock Mode) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Sans+TC:wght@400;700&display=swap');
+
+        :root {
+            --color-neon-primary: #ffaa00; 
+            --color-neon-red: #f00;
+            --color-neon-blue: #0ff;
+            --color-dark-bg: #050505;
+            --color-panel: #111;
+            --color-border: #333;
+        }
+
+        body {
+            background-color: var(--color-dark-bg);
+            color: #eee;
+            font-family: 'Share Tech Mono', 'Noto Sans TC', monospace;
+            overflow-x: hidden;
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #111; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--color-neon-primary); }
+
+        .panel-box {
+            background: rgba(17, 17, 17, 0.95);
+            border: 1px solid var(--color-border);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+            position: relative;
+        }
+        .panel-box::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--color-neon-primary), transparent);
+        }
+
+        .faction-night-heron { color: #ef4444; border-color: #ef4444; }
+        .faction-association { color: #3b82f6; border-color: #3b82f6; }
+        .faction-wanderer { color: #eab308; border-color: #eab308; }
+
+        .btn-tech {
+            background: linear-gradient(45deg, #111, #222);
+            border: 1px solid var(--color-neon-primary);
+            color: var(--color-neon-primary);
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-tech:hover {
+            background: var(--color-neon-primary);
+            color: #000;
+            box-shadow: 0 0 15px var(--color-neon-primary);
+        }
+        .btn-tech:disabled {
+            border-color: #555;
+            color: #555;
+            cursor: not-allowed;
+            background: #111;
+            box-shadow: none;
+            opacity: 0.5;
+        }
+
+        .cooldown-bar-container { width: 100%; height: 4px; background: #333; margin-top: 5px; position: relative; overflow: hidden; }
+        .cooldown-bar-fill { height: 100%; background: var(--color-neon-primary); width: 0%; transition: width 0.1s linear; }
+        .beast-card.selected { border-color: var(--color-neon-red); box-shadow: 0 0 15px rgba(255, 0, 0, 0.5); transform: scale(1.02); }
+        .scanlines { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: repeating-linear-gradient(0deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 1px, transparent 1px, transparent 2px); pointer-events: none; z-index: 9999; }
+        
+        input, select { background: #000; border: 1px solid #444; color: var(--color-neon-primary); }
+        input:focus, select:focus { outline: none; border-color: var(--color-neon-primary); }
+
+        .nav-tab { border: 1px solid #333; background: #111; color: #666; transition: all 0.3s; text-align: center; display: flex; align-items: center; justify-content: center; }
+        .nav-tab:hover { background: #222; color: var(--color-neon-primary); }
+        .tab-active { border: 1px solid var(--color-neon-primary); background: rgba(255, 170, 0, 0.1); color: var(--color-neon-primary); box-shadow: inset 0 0 10px rgba(255, 170, 0, 0.2); text-shadow: 0 0 5px var(--color-neon-primary); font-weight: bold; }
+        
+        .battle-tab { border-bottom: 2px solid #333; color: #666; cursor: pointer; padding: 0.5rem 1rem; }
+        .battle-tab.active { border-bottom-color: var(--color-neon-primary); color: white; background: rgba(255,255,255,0.05); }
+        .battle-tab.disabled { cursor: not-allowed; opacity: 0.5; }
+
+        .modal-overlay { background: rgba(0,0,0,0.85); backdrop-filter: blur(2px); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <div class="scanlines"></div>
+
+    <!-- Header -->
+    <header class="border-b border-gray-800 p-2 md:p-4 flex flex-col md:flex-row justify-between items-center bg-black z-50 sticky top-0 gap-2">
+        <div class="flex items-center gap-3 self-start md:self-center">
+            <i class="fas fa-biohazard text-orange-500 text-2xl"></i>
+            <h1 class="text-xl font-bold tracking-widest text-white">2055 <span class="text-orange-500">EOD_Terminal</span></h1>
+        </div>
+        
+        <div id="userInfoDisplay" class="hidden text-xs md:text-sm flex gap-3 items-center bg-gray-900 border border-gray-700 rounded-full px-4 py-1 self-end md:self-center">
+            <img id="headerAvatar" src="" class="w-8 h-8 rounded-full border border-gray-500 object-cover">
+            <div class="flex flex-col leading-tight mr-2">
+                <span id="headerName" class="font-bold text-white"></span>
+                <span id="headerTitle" class="text-[10px] text-gray-400"></span>
+            </div>
+            <div class="hidden md:flex gap-2 border-l border-gray-600 pl-3">
+                <span id="headerFaction" class="px-1 rounded border text-[10px]"></span>
+                <span id="headerRace" class="text-gray-400"></span>
+            </div>
+            <div class="flex gap-3 ml-2">
+                <span class="text-yellow-400"><i class="fas fa-coins"></i> <span id="headerMoney">0</span></span>
+                <span class="text-blue-400"><i class="fas fa-medal"></i> <span id="headerHonor">0</span></span>
+            </div>
+            <button onclick="logout()" class="text-red-500 hover:text-red-400 ml-2"><i class="fas fa-power-off"></i></button>
+        </div>
+    </header>
+
+    <!-- Main -->
+    <main class="flex-grow p-2 md:p-6 container mx-auto max-w-6xl z-10 relative">
+        
+        <!-- Login -->
+        <section id="loginSection" class="w-full max-w-md mx-auto mt-10 panel-box p-8 rounded-lg">
+            <h2 class="text-2xl mb-6 text-center glitch-text font-bold">身分驗證程序</h2>
+            <div class="flex gap-2 mb-4 justify-center">
+                <button onclick="toggleAuthMode('login')" id="btnLoginTab" class="w-1/2 py-2 border-b-2 border-orange-500 text-orange-500">登入</button>
+                <button onclick="toggleAuthMode('register')" id="btnRegTab" class="w-1/2 py-2 border-b-2 border-gray-700 text-gray-500 hover:text-gray-300">註冊</button>
+            </div>
+
+            <form id="loginForm" class="flex flex-col gap-4">
+                <input type="text" id="loginName" placeholder="角色代號 (ID)" class="p-3 rounded" required>
+                <input type="password" id="loginPass" placeholder="自定義密碼" class="p-3 rounded" required>
+                <button type="submit" class="btn-tech py-3 font-bold mt-2">連線至外部伺服器</button>
+                <div class="text-[10px] text-gray-500 text-center">測試帳號: tester / 1234 (流浪者)</div>
+            </form>
+
+            <form id="registerForm" class="flex flex-col gap-4 hidden">
+                <p class="text-xs text-orange-400 text-center">本企劃以 Plurk 創作為核心</p>
+                <input type="text" id="regName" placeholder="設定 ID" class="p-3 rounded" required>
+                <input type="password" id="regPass" placeholder="設定密碼" class="p-3 rounded" required>
+                <div class="grid grid-cols-2 gap-4">
+                    <select id="regRace" class="w-full p-3 rounded"><option value="human">純人類</option><option value="esper">超能者</option></select>
+                    <select id="regFaction" class="w-full p-3 rounded"><option value="wanderer">流浪者</option><option value="night_heron">夜鷺</option><option value="association">協會</option></select>
+                </div>
+                <input type="url" id="regPlurk" placeholder="Plurk 網址" class="w-full p-3 rounded" required>
+                <input type="url" id="regAvatarUrl" placeholder="大頭貼 (Plurk圖床)" class="w-full p-3 rounded" required>
+                <button type="submit" class="btn-tech py-3 font-bold mt-2">建立檔案</button>
+            </form>
+        </section>
+
+        <!-- Game Interface -->
+        <div id="gameInterface" class="hidden">
+            <nav class="grid grid-cols-3 md:grid-cols-6 gap-1 mb-6 text-sm md:text-base sticky top-16 bg-black z-40 py-2">
+                <button onclick="switchTab('dashboard')" class="nav-tab tab-active py-3" data-target="dashboard">個人檔案</button>
+                <button onclick="switchTab('roster')" class="nav-tab py-3" data-target="roster">角色名冊</button>
+                <button onclick="switchTab('missions')" class="nav-tab py-3" data-target="missions">任務中心</button>
+                <button onclick="switchTab('shop')" class="nav-tab py-3" data-target="shop">補給商店</button>
+                <button onclick="switchTab('crafting')" class="nav-tab py-3" data-target="crafting">裝備合成</button>
+                <button onclick="switchTab('battle')" class="nav-tab py-3 text-red-500 font-bold" data-target="battle">共鬥戰</button>
+            </nav>
+
+            <!-- Dashboard -->
+            <div id="tab-dashboard" class="tab-content grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Profile -->
+                <div class="panel-box p-6 rounded relative overflow-hidden">
+                    <div class="absolute top-2 right-2 text-xs border border-gray-600 px-2 py-1 rounded" id="dashFactionLabel">陣營</div>
+                    <div class="flex items-center gap-4 mb-4">
+                        <img id="dashAvatar" src="" class="w-20 h-20 rounded border-2 border-gray-600 object-cover bg-black">
+                        <div>
+                            <h3 id="dashName" class="text-2xl font-bold text-white">PLAYER</h3>
+                            <p id="dashRace" class="text-sm text-gray-400">RACE</p>
+                            <a id="dashPlurk" href="#" target="_blank" class="text-xs text-orange-400 hover:underline mt-1 block"><i class="fas fa-external-link-alt"></i> Plurk</a>
+                        </div>
+                    </div>
+                    <div class="mb-4 bg-gray-900 p-2 rounded flex items-center justify-between">
+                        <span class="text-xs text-gray-400">當前稱號:</span>
+                        <select id="titleSelector" class="bg-black border border-gray-700 text-xs p-1 rounded w-40 text-orange-400" onchange="changeTitle()"></select>
+                    </div>
+                    <div class="space-y-2 text-sm font-mono">
+                        <div class="flex justify-between border-b border-gray-800 pb-1"><span>HP</span> <span id="dashHP" class="text-green-400"></span></div>
+                        <div class="flex justify-between border-b border-gray-800 pb-1"><span>ATK</span> <span id="dashATK" class="text-red-400"></span></div>
+                        <div class="flex justify-between border-b border-gray-800 pb-1"><span>DEF</span> <span id="dashDEF" class="text-blue-400"></span></div>
+                        <div class="flex justify-between border-b border-gray-800 pb-1"><span>Honor</span> <span id="dashHonor" class="text-yellow-400"></span></div>
+                    </div>
+                </div>
+
+                <!-- Inventory (Split) -->
+                <div class="panel-box p-6 rounded">
+                    <h3 class="text-lg font-bold mb-4 text-gray-300">背包清單</h3>
+                    <div class="mb-4">
+                        <h4 class="text-xs text-orange-500 border-b border-gray-700 mb-2 pb-1">裝備 (Equipment)</h4>
+                        <div id="inventoryEquipList" class="grid grid-cols-4 gap-2 text-xs"></div>
+                    </div>
+                    <div>
+                        <h4 class="text-xs text-blue-500 border-b border-gray-700 mb-2 pb-1">道具 (Items)</h4>
+                        <div id="inventoryItemList" class="grid grid-cols-4 gap-2 text-xs"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Roster -->
+            <div id="tab-roster" class="tab-content hidden">
+                <div class="flex gap-2 mb-4">
+                    <button onclick="filterRoster('all')" class="bg-gray-800 px-3 py-1 text-xs rounded">全部</button>
+                    <button onclick="filterRoster('night_heron')" class="bg-red-900/30 text-red-500 px-3 py-1 text-xs rounded">夜鷺</button>
+                    <button onclick="filterRoster('association')" class="bg-blue-900/30 text-blue-400 px-3 py-1 text-xs rounded">協會</button>
+                    <button onclick="filterRoster('wanderer')" class="bg-yellow-900/30 text-yellow-400 px-3 py-1 text-xs rounded">流浪者</button>
+                </div>
+                <div id="rosterGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+            </div>
+
+            <!-- Missions (Split Layout) -->
+            <div id="tab-missions" class="tab-content hidden">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="panel-box p-6 rounded border-l-4 border-orange-500 h-fit">
+                        <h3 class="text-lg font-bold mb-4 text-white"><i class="fas fa-file-signature text-orange-500"></i> 任務回報終端</h3>
+                        <form id="missionReportForm" class="grid grid-cols-1 gap-4">
+                            <div><label class="text-xs text-gray-500 block mb-1">任務類別</label><select id="reportType" class="w-full p-2 text-xs bg-gray-900 border border-gray-700"><option value="main">主線</option><option value="side">支線</option></select></div>
+                            <div><label class="text-xs text-gray-500 block mb-1">任務目標 (Target)</label><select id="reportTarget" class="w-full p-2 text-xs bg-gray-900 border border-gray-700"></select></div>
+                            <div><label class="text-xs text-gray-500 block mb-1">自定義標題 (Title)</label><input type="text" id="reportTitle" placeholder="例如: [夜鷺] 潛入作戰..." class="w-full p-2 text-xs bg-gray-900 border border-gray-700" required></div>
+                            <div><label class="text-xs text-gray-500 block mb-1">創作連結 (Plurk)</label><input type="url" id="reportUrl" placeholder="https://www.plurk.com/p/..." class="w-full p-2 text-xs bg-gray-900 border border-gray-700" required></div>
+                            <button type="submit" class="btn-tech w-full py-2 font-bold text-sm">提交回報</button>
+                        </form>
+                    </div>
+                    <div class="panel-box p-4 rounded bg-gray-900/50">
+                        <div class="flex justify-between items-center mb-2 border-b border-gray-700 pb-2">
+                            <h3 class="text-sm font-bold text-green-500"><i class="fas fa-satellite-dish"></i> 數據擷取器 (Data Feed)</h3>
+                            <span class="text-[10px] text-gray-500 animate-pulse">● LIVE</span>
+                        </div>
+                        <div id="missionFeed" class="space-y-2 h-[400px] overflow-y-auto pr-2 text-xs font-mono"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Shop (With Images) -->
+            <div id="tab-shop" class="tab-content hidden">
+                <div class="flex justify-between items-center mb-4"><h3 class="text-xl text-orange-500 font-bold">陣營補給</h3><span class="text-yellow-400 text-sm">$<span id="shopMoneyDisplay">0</span></span></div>
+                <div id="shopGrid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
+            </div>
+
+            <!-- Crafting (With Images) -->
+            <div id="tab-crafting" class="tab-content hidden">
+                <div class="panel-box p-6 rounded max-w-2xl mx-auto text-center">
+                    <h3 class="text-xl mb-6">裝備合成台</h3>
+                    <div class="flex justify-center items-center gap-4 mb-8">
+                        <div id="craftSlot1" onclick="selectCraftItem(1)" class="w-24 h-24 border-2 border-dashed border-gray-600 rounded flex items-center justify-center cursor-pointer hover:border-orange-500 relative overflow-hidden bg-black"><span class="text-4xl text-gray-600">+</span></div>
+                        <i class="fas fa-arrow-right text-gray-500"></i>
+                        <div id="craftSlot2" onclick="selectCraftItem(2)" class="w-24 h-24 border-2 border-dashed border-gray-600 rounded flex items-center justify-center cursor-pointer hover:border-orange-500 relative overflow-hidden bg-black"><span class="text-4xl text-gray-600">+</span></div>
+                    </div>
+                    <button onclick="performCraft()" class="btn-tech px-8 py-2 w-full max-w-xs mx-auto">合成</button>
+                    <div id="craftSelector" class="hidden mt-4 text-left border-t border-gray-700 pt-4"><div id="craftInventoryList" class="grid grid-cols-4 gap-2"></div></div>
+                </div>
+            </div>
+
+            <!-- Battle (Faction Tabs & MVP) -->
+            <div id="tab-battle" class="tab-content hidden">
+                <div class="text-center mb-4">
+                    <h2 class="text-2xl font-bold text-orange-500" id="battleNameDisplay">讀取戰況...</h2>
+                    <div id="battleTimerDisplay" class="text-sm font-mono mt-1 text-gray-400">00:00:00</div>
+                </div>
+                <div id="wandererChoice" class="hidden text-center panel-box p-8 rounded max-w-2xl mx-auto">
+                    <h3 class="text-xl font-bold mb-4 text-yellow-500">【流浪者通訊】偵測到衝突區域</h3>
+                    <p class="text-sm text-gray-400 mb-6">請選擇本次戰役介入的陣營。注意：單場戰役鎖定不可更改。</p>
+                    <div class="flex gap-4 justify-center">
+                        <button onclick="wandererSelectSide('night_heron')" class="w-40 py-4 border border-red-500 text-red-500 hover:bg-red-900/20 rounded"><i class="fas fa-moon text-2xl mb-2"></i><br>夜鷺戰線</button>
+                        <button onclick="wandererSelectSide('association')" class="w-40 py-4 border border-blue-500 text-blue-500 hover:bg-blue-900/20 rounded"><i class="fas fa-building text-2xl mb-2"></i><br>協會戰線</button>
+                    </div>
+                </div>
+                <div id="battlefield" class="hidden">
+                    <div class="flex border-b border-gray-800 mb-4">
+                        <div id="tabBattleHeron" class="battle-tab w-1/2 text-center" onclick="switchBattleTab('night_heron')">夜鷺戰線 (Night Heron)</div>
+                        <div id="tabBattleAssoc" class="battle-tab w-1/2 text-center" onclick="switchBattleTab('association')">協會戰線 (Association)</div>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                        <div class="lg:col-span-1 panel-box p-3 rounded h-fit">
+                            <h4 class="text-xs font-bold text-yellow-500 mb-2"><i class="fas fa-trophy"></i> 戰場 MVP (Top Damage)</h4>
+                            <div id="battleMVPList" class="space-y-2 text-xs"></div>
+                        </div>
+                        <div class="lg:col-span-2">
+                            <div id="beastContainer" class="grid grid-cols-1 gap-4"></div>
+                            <div id="battleOverlayMessage" class="hidden text-center p-10 text-gray-500 bg-black/50 border border-gray-800 rounded mt-4"><i class="fas fa-lock text-2xl mb-2"></i><br>非所屬陣營戰線，無法進行干涉。</div>
+                        </div>
+                        <div class="lg:col-span-1 flex flex-col gap-4">
+                            <div class="panel-box p-3 rounded">
+                                <h4 class="text-xs text-gray-400 mb-2">戰術裝備 (Loadout)</h4>
+                                <div class="flex gap-2 justify-center" id="battleLoadoutDisplay"></div>
+                            </div>
+                            <div class="panel-box p-4 rounded">
+                                <h4 class="text-yellow-500 font-bold mb-2 text-sm">技能</h4>
+                                <div id="skillButtons" class="grid grid-cols-2 gap-2 mb-4"></div>
+                                <button id="btnAttack" onclick="performAttack()" class="w-full h-16 bg-red-900 border-2 border-red-500 text-white font-bold text-lg relative overflow-hidden active:scale-95 transition-transform rounded"><span class="z-10 relative">攻擊目標</span></button>
+                                <div class="cooldown-bar-container rounded"><div id="cooldownBar" class="cooldown-bar-fill"></div></div>
+                            </div>
+                            <div class="h-32 bg-black border border-gray-700 p-2 overflow-y-auto text-xs font-mono" id="battleLog"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Char Modal -->
+        <div id="charModal" class="fixed inset-0 modal-overlay hidden z-[100] flex items-center justify-center p-4">
+            <div class="panel-box bg-black max-w-lg w-full rounded-lg border border-orange-500 shadow-2xl relative flex flex-col max-h-[90vh]">
+                <button onclick="closeCharModal()" class="absolute top-2 right-2 text-gray-500 hover:text-white"><i class="fas fa-times text-xl"></i></button>
+                <div class="p-6 overflow-y-auto">
+                    <div class="flex gap-4 mb-6">
+                        <img id="modalAvatar" src="" class="w-24 h-24 rounded border-2 border-gray-600 object-cover bg-gray-900">
+                        <div>
+                            <h3 id="modalName" class="text-2xl font-bold text-white mb-1">NAME</h3>
+                            <div class="mb-2"><span id="modalTitle" class="text-xs text-orange-400 border border-orange-900 px-2 py-0.5 rounded bg-black"></span></div>
+                            <span id="modalFaction" class="text-xs border px-2 py-0.5 rounded"></span>
+                            <a id="modalPlurk" href="#" target="_blank" class="text-xs text-blue-400 ml-2 hover:underline">Plurk</a>
+                        </div>
+                    </div>
+                    <h4 class="border-b border-gray-700 pb-2 mb-2 text-orange-500 font-bold">履歷</h4>
+                    <div id="modalMissionLog" class="text-xs font-mono space-y-2 max-h-40 overflow-y-auto pr-2"></div>
+                    <div class="mt-4 pt-4 border-t border-gray-800 text-center">
+                         <img id="modalCard" src="" class="w-full max-h-60 object-contain rounded border border-gray-800 hidden">
+                         <span id="noCardText" class="text-gray-600 text-xs italic">無角色卡資料</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // ... BackendService & Data (Same as before) ...
+        const ITEM_DB = {
+            'w1': { id: 'w1', name: '鏽蝕鐵劍', type: 'weapon', atk: 10, price: 100, img: 'https://placehold.co/100x100/333/666?text=SWORD' },
+            'a1': { id: 'a1', name: '防彈背心', type: 'armor', def: 15, price: 300, img: 'https://placehold.co/100x100/333/666?text=ARMOR' },
+            'm1': { id: 'm1', name: '高能電池', type: 'material', price: 200, img: 'https://placehold.co/100x100/131/363?text=BATT' },
+            'c1': { id: 'c1', name: '急救噴霧', type: 'consumable', effect: 'heal', val: 50, price: 50, img: 'https://placehold.co/100x100/311/633?text=HEAL' },
+            'w3': { id: 'w3', name: '電漿切割刃', type: 'weapon', atk: 60, price: 2000, hidden: true, img: 'https://placehold.co/100x100/551/aa3?text=PLASMA' },
+            'a2': { id: 'a2', name: '外骨骼裝甲', type: 'armor', atk: 5, def: 40, price: 1500, hidden: true, img: 'https://placehold.co/100x100/333/666?text=EXO' }
+        };
+        const RECIPES = [{ ingredients: ['w1', 'm1'], result: 'w3' }, { ingredients: ['a1', 'm1'], result: 'a2' }];
+        const MISSIONS = [{ id: 1, title: '初入荒漠', type: 'main', money: 1000 }, { id: 2, title: '物資運送', type: 'side', money: 300 }];
+        const TITLES = ['新人特工', '荒漠行者', '夜之守望', '協會精英', '自由之翼', '傳說級創作者'];
+
+        class BackendService {
+            constructor() { this.useMock = true; }
+            async login(name, pass) { return new Promise(resolve => setTimeout(() => resolve(this.mockUser(name)), 500)); }
+            async register(data) { return new Promise(resolve => setTimeout(() => resolve({...this.mockUser(data.name), ...data}), 500)); }
+            mockUser(name) {
+                const isTester = name === 'tester';
+                return {
+                    id: 'u_'+Math.floor(Math.random()*1000), name: name,
+                    faction: isTester ? 'wanderer' : 'night_heron', 
+                    race: 'human', money: 5000, honor: 1200,
+                    avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${name}`,
+                    stats: { hp: 120, atk: 10, def: 10 },
+                    inventory: ['w1', 'a1', 'c1', 'm1'], skills: ['s1'],
+                    title: '新人特工', unlockedTitles: ['新人特工', '荒漠行者'],
+                    plurkUrl: 'https://plurk.com', history: []
+                };
+            }
+            getBattleState() {
+                return {
+                    name: '第14次防衛戰 - 廢棄工業區', status: 'active', startTime: Date.now() - 3600000,
+                    beasts: {
+                        night_heron: [{ id: 'b1', name: '輻射巨蠍', hp: 15000, maxHp: 20000, def: 10, img: 'https://placehold.co/600x300/331111/aa3333?text=SCORPION' }],
+                        association: [{ id: 'b2', name: '暴走機甲', hp: 28000, maxHp: 30000, def: 50, img: 'https://placehold.co/600x300/111133/3333aa?text=MECH' }]
+                    },
+                    mvp: { night_heron: [{ name: 'Kael', dmg: 5400, avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Kael' }], association: [{ name: 'Rex', dmg: 6100, avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Rex' }] }
+                };
+            }
+            getMissionFeed() { return []; } // Simplified
+        }
+        const backend = new BackendService();
+
+        let appState = { user: null, users: [], activeBattle: null, battleSession: { currentSide: null, viewingTab: null, targetIndex: -1, cooldown: 0 } };
+        let selectedCraftSlots = [null, null];
+
+        function init() {}
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            appState.user = await backend.login(document.getElementById('loginName').value, 'xx');
+            loginSuccess();
+        });
+
+        function loginSuccess() {
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('gameInterface').classList.remove('hidden');
+            document.getElementById('userInfoDisplay').classList.remove('hidden');
+            
+            appState.activeBattle = backend.getBattleState();
+            generateDummyUsers();
+            updateUI();
+        }
+
+        // Helper to safely set text
+        function setText(id, text) {
+            const el = document.getElementById(id);
+            if(el) el.innerText = text;
+        }
+        // Helper to safely set src
+        function setSrc(id, src) {
+            const el = document.getElementById(id);
+            if(el) el.src = src;
+        }
+
+        function updateUI() {
+            if(!appState.user) return;
+            const u = appState.user;
+            
+            // Header
+            setText('headerName', u.name);
+            setSrc('headerAvatar', u.avatar);
+            setText('headerFaction', u.faction);
+            setText('headerRace', u.race);
+            setText('headerMoney', u.money);
+            setText('headerHonor', u.honor);
+            
+            const hFaction = document.getElementById('headerFaction');
+            if(hFaction) hFaction.className = `px-1 rounded border text-[10px] faction-${u.faction.replace('_','-')}`;
+
+            // Dash
+            setText('dashName', u.name);
+            setSrc('dashAvatar', u.avatar);
+            setText('dashFactionLabel', u.faction);
+            setText('dashHP', u.stats.hp);
+            setText('dashATK', u.stats.atk);
+            setText('dashDEF', u.stats.def);
+            setText('dashHonor', u.honor);
+            setText('dashTitleText', u.title || '無稱號');
+            
+            setText('shopMoneyDisplay', u.money);
+
+            const titleSel = document.getElementById('titleSelector');
+            if(titleSel) {
+                titleSel.innerHTML = '';
+                u.unlockedTitles.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t; opt.innerText = t;
+                    if(t === u.title) opt.selected = true;
+                    titleSel.appendChild(opt);
+                });
+            }
+
+            renderInventory();
+        }
+
+        // ... (Functions unchanged but included for completeness: switchTab, renderInventory, etc.)
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+            document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('tab-active'));
+            document.querySelector(`[data-target="${tabId}"]`).classList.add('tab-active');
+            
+            if(tabId === 'roster') renderRoster('all');
+            if(tabId === 'shop') renderShop();
+            if(tabId === 'battle') initBattleView();
+            if(tabId === 'missions') renderMissions();
+        }
+
+        function renderInventory() {
+            const equipList = document.getElementById('inventoryEquipList');
+            const itemList = document.getElementById('inventoryItemList');
+            if(!equipList || !itemList) return;
+            equipList.innerHTML = ''; itemList.innerHTML = '';
+
+            appState.user.inventory.forEach(id => {
+                const item = ITEM_DB[id];
+                if(!item) return;
+                const div = document.createElement('div');
+                div.className = "bg-gray-800 p-2 border border-gray-700 flex flex-col items-center gap-1 cursor-pointer hover:border-orange-500";
+                div.innerHTML = `<img src="${item.img}" class="w-8 h-8 rounded object-cover"><span class="truncate w-full text-center">${item.name}</span>`;
+                
+                if(item.type === 'weapon' || item.type === 'armor') equipList.appendChild(div);
+                else itemList.appendChild(div);
+            });
+        }
+
+        function generateDummyUsers() {
+            const factions = ['night_heron', 'association', 'wanderer'];
+            const names = ['Kael', 'Nova', 'Rex', 'Cipher'];
+            appState.users = [];
+            for(let i=0; i<15; i++) {
+                appState.users.push({
+                    id: 'npc_'+i, name: names[i%4]+'_'+i, faction: factions[Math.floor(Math.random()*3)],
+                    race: 'human', title: TITLES[0], plurkUrl: '#', honor: 1000,
+                    avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${i}`
+                });
+            }
+        }
+
+        function filterRoster(type) { renderRoster(type); }
+        function renderRoster(filter) {
+            const grid = document.getElementById('rosterGrid');
+            grid.innerHTML = '';
+            let list = appState.users.sort((a,b) => b.honor - a.honor);
+            if (filter !== 'all') list = list.filter(u => u.faction === filter);
+            list.forEach((u, i) => {
+                const card = document.createElement('div');
+                card.className = 'panel-box p-3 rounded flex gap-3 cursor-pointer hover:border-orange-500 transition-all';
+                card.onclick = () => showCharModal(u.id);
+                card.innerHTML = `<div class="relative"><img src="${u.avatar}" class="w-16 h-16 rounded border border-gray-700 bg-black"></div><div class="flex flex-col justify-center flex-1"><div class="text-white font-bold">${u.name}</div><div class="text-xs text-yellow-400">${u.honor}</div></div>`;
+                grid.appendChild(card);
+            });
+        }
+
+        function showCharModal(id) { document.getElementById('charModal').classList.remove('hidden'); }
+        function closeCharModal() { document.getElementById('charModal').classList.add('hidden'); }
+        
+        function renderShop() {
+            const grid = document.getElementById('shopGrid');
+            grid.innerHTML = '';
+            Object.values(ITEM_DB).forEach(item => {
+                if(item.hidden) return;
+                const div = document.createElement('div');
+                div.className = "bg-gray-900 border border-gray-700 p-3 rounded flex flex-col gap-2";
+                div.innerHTML = `<img src="${item.img}" class="w-full h-24 object-cover rounded bg-black"><div class="text-orange-400 font-bold">${item.name}</div>`;
+                grid.appendChild(div);
+            });
+        }
+
+        function selectCraftItem(slot) {
+            const list = document.getElementById('craftInventoryList');
+            list.innerHTML = '';
+            document.getElementById('craftSelector').classList.remove('hidden');
+            appState.user.inventory.forEach(id => {
+                const item = ITEM_DB[id];
+                if(!item) return;
+                const btn = document.createElement('div');
+                btn.className = "bg-gray-800 p-2 border border-gray-600 flex gap-2 items-center cursor-pointer hover:bg-gray-700";
+                btn.innerHTML = `<img src="${item.img}" class="w-6 h-6 rounded">${item.name}`;
+                btn.onclick = () => {
+                    selectedCraftSlots[slot-1] = id;
+                    document.getElementById(`craftSlot${slot}`).innerHTML = `<img src="${item.img}" class="w-full h-full object-cover">`;
+                    document.getElementById('craftSelector').classList.add('hidden');
+                };
+                list.appendChild(btn);
+            });
+        }
+
+        function performCraft() {
+            const [i1, i2] = selectedCraftSlots;
+            if (!i1 || !i2) { alert("請選擇兩個素材"); return; }
+            alert("合成模擬成功！");
+        }
+
+        function renderMissions() {
+            const targetSel = document.getElementById('reportTarget');
+            targetSel.innerHTML = '';
+            MISSIONS.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id; opt.innerText = m.title;
+                targetSel.appendChild(opt);
+            });
+        }
+
+        // Battle
+        function initBattleView() {
+            const u = appState.user;
+            if(u.faction === 'wanderer') {
+                if(!appState.battleSession.currentSide) {
+                    document.getElementById('wandererChoice').classList.remove('hidden');
+                    document.getElementById('battlefield').classList.add('hidden');
+                    return;
+                }
+            } else {
+                appState.battleSession.currentSide = u.faction;
+            }
+            if(!appState.battleSession.viewingTab) appState.battleSession.viewingTab = appState.battleSession.currentSide;
+            
+            document.getElementById('wandererChoice').classList.add('hidden');
+            document.getElementById('battlefield').classList.remove('hidden');
+            
+            renderBattleLoadout();
+            updateBattleTabsUI();
+            renderBattlefield();
+        }
+
+        function wandererSelectSide(side) { appState.battleSession.currentSide = side; initBattleView(); }
+        function switchBattleTab(tab) { appState.battleSession.viewingTab = tab; updateBattleTabsUI(); renderBattlefield(); }
+        
+        function updateBattleTabsUI() {
+            const tHeron = document.getElementById('tabBattleHeron');
+            const tAssoc = document.getElementById('tabBattleAssoc');
+            tHeron.className = `battle-tab w-1/2 text-center ${appState.battleSession.viewingTab === 'night_heron' ? 'active' : ''}`;
+            tAssoc.className = `battle-tab w-1/2 text-center ${appState.battleSession.viewingTab === 'association' ? 'active' : ''}`;
+        }
+
+        function renderBattlefield() {
+            const viewing = appState.battleSession.viewingTab;
+            const container = document.getElementById('beastContainer');
+            container.innerHTML = '';
+            const beasts = appState.activeBattle.beasts[viewing] || [];
+            beasts.forEach((b, idx) => {
+                const card = document.createElement('div');
+                card.className = 'beast-card panel-box p-3 rounded relative cursor-pointer border-gray-700';
+                card.onclick = () => { appState.battleSession.targetIndex = idx; renderBattlefield(); }; // Simplified
+                if(appState.battleSession.targetIndex === idx) card.classList.add('selected');
+                card.innerHTML = `<img src="${b.img}" class="w-full h-32 object-cover mb-2"><div class="text-white font-bold">${b.name}</div>`;
+                container.appendChild(card);
+            });
+        }
+
+        function renderBattleLoadout() {
+            const container = document.getElementById('battleLoadoutDisplay');
+            container.innerHTML = '';
+            appState.user.inventory.slice(0, 3).forEach(id => {
+                const item = ITEM_DB[id];
+                if(item) container.innerHTML += `<img src="${item.img}" class="w-8 h-8 rounded border border-gray-600 bg-black">`;
+            });
+        }
+
+        function performAttack() { alert("模擬攻擊！"); }
+        function toggleAuthMode(m) {
+            document.getElementById('loginForm').classList.toggle('hidden', m!=='login');
+            document.getElementById('registerForm').classList.toggle('hidden', m!=='register');
+        }
+        function logout() { location.reload(); }
+        function changeTitle() { appState.user.title = document.getElementById('titleSelector').value; updateUI(); }
+
+    </script>
+</body>
+</html>
