@@ -346,7 +346,7 @@
         const TITLES = ['新人特工', '荒漠行者', '夜之守望', '協會精英', '自由之翼', '傳說級創作者'];
 
         class BackendService {
-            constructor() { this.useMock = true; }
+            constructor() { this.useMock = false; }
             async login(name, pass) { return new Promise(resolve => setTimeout(() => resolve(this.mockUser(name)), 500)); }
             async register(data) { return new Promise(resolve => setTimeout(() => resolve({...this.mockUser(data.name), ...data}), 500)); }
             mockUser(name) {
@@ -624,4 +624,5 @@
 
     </script>
 </body>
+
 </html>
